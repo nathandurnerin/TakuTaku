@@ -1,5 +1,6 @@
 // server/src/modules/favoriteAnime/favoriteAnimeRepository.ts
 import supabase from "../../supabaseClient";
+import { toPublicUrl } from "../../lib/storage";
 
 export type Favorite = {
   users_id: number;
@@ -14,7 +15,6 @@ class FavoriteAnimeRepository {
       .select("users_id");
 
     if (error) {
-      // doublon -> OK (si contrainte unique)
       if ((error as any).code === "23505") return true;
       console.error("favorite.repo.create error:", error);
       throw error;
@@ -65,7 +65,7 @@ class FavoriteAnimeRepository {
     return (animes ?? []).map((a: any) => ({
       anime_id: a.id,
       title: a.title,
-      portrait: toPublic(a.portrait, "poster"),
+      portrait: toPublicUrl(a.portrait, "poster"),
     }));
   }
 

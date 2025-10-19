@@ -1,4 +1,5 @@
 import supabase from "../../../database/supabase";
+import { toPublicUrl } from "../../lib/storage";
 
 export type User = {
   id: number;
@@ -151,7 +152,7 @@ class UserRepository {
       lastname: row.users?.lastname,
       anime_id: row.anime?.id,
       title: row.anime?.title,
-      portrait: toPublic(row.anime?.portrait, "poster"),
+      portrait: toPublicUrl(row.anime?.portrait, "poster"),
     }));
   }
 
@@ -201,8 +202,8 @@ class UserRepository {
       synopsis: a.synopsis,
       date: a.date,
       video: a.video,
-      portrait: toPublic(a.portrait, "poster"),
-      paysage: toPublic(a.paysage, "poster"),
+      portrait: toPublicUrl(a.portrait, "poster"),
+      paysage: toPublicUrl(a.paysage, "poster"),
     }));
   }
 
@@ -293,7 +294,7 @@ class UserRepository {
     const raw = (data as any)?.picture?.profil_picture ?? null;
     if (!raw) return null;
 
-    return { profil_picture: toPublic(raw, "profilpicture") };
+    return { profil_picture: toPublicUrl(raw, "profilpicture") };
   }
 
   // findByEmail
