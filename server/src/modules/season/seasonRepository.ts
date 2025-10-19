@@ -1,61 +1,75 @@
-import databaseClient from "../../../database/client";
+import supabase from "../../../database/supabase";
 
-import type { Result, Rows } from "../../../database/client";
-
-type Season = {
+export type Season = {
   id: number;
   number: number;
   anime_id: number;
 };
 
 class SeasonRepository {
-  // Le C du CRUD - Create
-  async create(season: Omit<Season, "id">) {
-    // Création d'une nouvelle saison
-    const [result] = await databaseClient.query<Result>(
-      "INSERT INTO Season (number, anime_id) VALUES (?, ?)",
-      [season.number, season.anime_id],
-    );
-    // Retourne l'ID de la nouvelle saison insérée
-    return result.insertId;
+  // CREATE
+  async create(season: Omit<Season, "id">): Promise<number> {
+    const { data, error } = await supabase
+      .from("season") // ou "Season" si ta table est en CamelCase
+      .insert([{
+        number: season.number,
+        anime_id: season.anime_id,
+      }])
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data!.id as number;
   }
 
-  // Le R du CRUD - Read
-  async read(id: number) {
-    // Exécute la requête SQL pour lire une saison spécifique par son ID
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT * FROM Season WHERE id = ?",
-      [id],
-    );
-    // Retourne la première ligne du résultat de la requête
-    return rows[0] as Season;
+  // READ (un season par id)
+  async read(id: number): Promise<Season | null> {
+    const { data, error } = await supabase
+      .from("season")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as Season | null;
   }
 
-  async readAll() {
-    // Exécute la requête SQL pour lire toutes les saisons
-    const [rows] = await databaseClient.query<Rows>("SELECT * FROM Season");
-    // Retourne le tableau des saisons
-    return rows as Season[];
+  // READ ALL
+  async readAll(): Promise<Season[]> {
+    const { data, error } = await supabase
+      .from("season")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as Season[];
   }
 
-  // Le U du CRUD - Update
-  async update(season: Season) {
-    // Exécute la requête SQL pour mettre à jour une saison existante
-    const [result] = await databaseClient.query<Result>(
-      "UPDATE Season SET number = ?, anime_id = ? WHERE id = ?",
-      [season.number, season.anime_id, season.id],
-    );
-    return result.affectedRows > 0; // Retourne true si la mise à jour a réussi
+  // UPDATE
+  async update(season: Season): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("season")
+      .update({
+        number: season.number,
+        anime_id: season.anime_id,
+      })
+      .eq("id", season.id)
+      .select("id");
+
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 
-  // Le D du CRUD - Delete
-  async delete(id: number) {
-    // Exécute la requête SQL pour supprimer une saison par son ID
-    const [result] = await databaseClient.query<Result>(
-      "DELETE FROM Season WHERE id = ?",
-      [id],
-    );
-    return result.affectedRows > 0; // Retourne true si la suppression a réussi
+  // DELETE
+  async delete(id: number): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("season")
+      .delete()
+      .eq("id", id)
+      .select("id");
+
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 }
 

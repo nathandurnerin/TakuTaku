@@ -1,31 +1,40 @@
-import type { NextFunction, Request, Response } from "express";
+// server/src/middleware/security.ts
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import type { JwtPayload as DefaultJwtPayload } from "jsonwebtoken";
 
-interface JwtPayload extends DefaultJwtPayload {
-  id: number;
+declare module "express-serve-static-core" {
+  interface Request {
+    auth?: { id: number; mail?: string; role?: string };
+  }
 }
-//Middleware qui protège une route on vérifie si le token a été envoyé par le client et s'il est valide (il reçoit tous les objets req,res,next)
+
+const JWT_SECRET = process.env.JWT_SECRET as string;
+
 export const checkToken = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.headers.authorization; // on récupère le token envoyé dans les headers de la requête http du client(dans le champs Autorization + précisément)
+  try {
+    const auth = req.headers.authorization || "";
+    // supporte "Bearer xxx" ou directement "xxx"
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : auth;
 
-  if (!token) {
-    res.status(401).send({ message: "Accès non autorisé" });
-    return;
-  } //Si le client n'envoie pas de Token alors on bloque l'accès
+    if (!token) return res.status(401).json({ message: "Accès non autorisé" });
 
-  jwt.verify(token, process.env.JWT_SECRET as string, (err, decoded) => {
-    if (err) {
-      console.error("Token verification failed:", err);
-      return res.status(401).send({ message: "Unauthorized" });
-    } //Grâce a verify on vérifie si le token est unique (fonctionnalité native de JWT) pour ça on lui donne : le token et la clé secrète
+    const payload = jwt.verify(token, JWT_SECRET) as {
+      id: number;
+      mail?: string;
+      role?: string;
+      exp?: number;
+      iat?: number;
+    };
 
-    const payload = decoded as JwtPayload;
-    if (payload?.id) {
-      req.body.userID = payload.id;
-    } //On ajoute l'ID de l'utilisateur dans le corps de la requête pour qu'il soit accessible dans les prochaines étapes du traitement de la requête
+    if (!payload?.id) return res.status(401).json({ message: "Unauthorized" });
+
+    // on stocke l’info d’auth ici (pas dans req.body)
+    req.auth = { id: payload.id, mail: payload.mail, role: payload.role };
     next();
-  });
+  } catch (err) {
+    console.error("Token verification failed:", err);
+    return res.status(401).json({ message: "Unauthorized" });
+  }
 };
 
 export default { checkToken };

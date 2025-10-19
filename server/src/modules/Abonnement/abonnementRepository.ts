@@ -1,64 +1,67 @@
-import databaseClient from "../../../database/client";
-
-import type { Result, Rows } from "../../../database/client";
+import supabase from '../../../database/supabase';
 
 type AbonnementName = "découverte" | "premium";
+type Abonnement = { id: number; name: AbonnementName };
 
-type Abonnement = {
-  id: number;
-  name: AbonnementName;
-};
 
 class AbonnementRepository {
-  // Le C du CRUD - Create
+  // CREATE
   async create(abonnement: Omit<Abonnement, "id">) {
-    // Création d'un nouvel abonnement
-    const [result] = await databaseClient.query<Result>(
-      "INSERT INTO Abonnement (name) values (?)",
-      [abonnement.name],
-    );
-    //Retourne l'ID du nouvel abonnement inséré
-    return result.insertId;
+    const { data, error } = await supabase
+      .from("abonnement") // ou "Abonnement" si ta table est en CamelCase
+      .insert({ name: abonnement.name })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data.id as number;
   }
-  // Le R du CRUD - Read
+
+  // READ (one)
   async read(id: number) {
-    // Execute la requête SQL pour lire un item spécifique par son ID
-    const [rows] = await databaseClient.query<Rows>(
-      "select * from Abonnement where id = ?",
-      [id],
-    );
-    //Retourne la première ligne du résultat de la requête
-    return rows[0] as Abonnement;
+    const { data, error } = await supabase
+      .from("abonnement")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    return data as Abonnement;
   }
+
+  // READ ALL
   async readAll() {
-    // Exécute la requête SQL pour lire tout le tableau de la table "Abonnement"
-    const [rows] = await databaseClient.query<Rows>("select * from Abonnement");
+    const { data, error } = await supabase
+      .from("abonnement")
+      .select("*")
+      .order("id", { ascending: true });
 
-    // Return the array of items
-    return rows as Abonnement[];
+    if (error) throw error;
+    return (data ?? []) as Abonnement[];
   }
 
-  // Le U du CRUD - Update
+  // UPDATE
   async update(abonnement: Abonnement) {
-    // Exécute la requête SQL pour lire tout le tableau de la table "Abonnement"
-    const [result] = await databaseClient.query<Result>(
-      "UPDATE Abonnement set name = ? WHERE id = ?",
-      [abonnement.name, abonnement.id],
-    );
+    const { data, error } = await supabase
+      .from("abonnement")
+      .update({ name: abonnement.name })
+      .eq("id", abonnement.id)
+      .select("id"); // retourne les lignes modifiées
 
-    // Retourne le tableau d'abonnements mis à jour
-
-    return result.affectedRows;
+    if (error) throw error;
+    return (data?.length ?? 0); // équivalent à affectedRows
   }
-  // Le D du CRUD - Delete
+
+  // DELETE
   async delete(id: number) {
-    // Exécute la requête SQL pour supprimer un abonnement spécifique par son ID
-    const [result] = await databaseClient.query<Result>(
-      "DELETE FROM Abonnement WHERE id = ?",
-      [id],
-    );
-    // Retourne le nombre de lignes affectées par la suppression
-    return result.affectedRows;
+    const { data, error } = await supabase
+      .from("abonnement")
+      .delete()
+      .eq("id", id)
+      .select("id"); // pour savoir combien ont été supprimées
+
+    if (error) throw error;
+    return (data?.length ?? 0);
   }
 }
 

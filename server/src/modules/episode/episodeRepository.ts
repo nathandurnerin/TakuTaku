@@ -1,8 +1,6 @@
-import databaseClient from "../../../database/client";
+import supabase from "../../../database/supabase";
 
-import type { Result, Rows } from "../../../database/client";
-
-type Episode = {
+export type Episode = {
   id: number;
   number: number;
   title: string;
@@ -11,59 +9,73 @@ type Episode = {
 };
 
 class EpisodeRepository {
-  // Le C du CRUD - Create
-  async create(episode: Omit<Episode, "id">) {
-    // Création d'un nouvel episode
-    const [result] = await databaseClient.query<Result>(
-      "INSERT INTO Episode (number, title, synopsis, season_id) VALUES (?, ?, ?, ?)",
-      [episode.number, episode.title, episode.synopsis, episode.season_id],
-    );
-    // Retourne l'ID du nouvel episode inséré
-    return result.insertId;
+  // CREATE
+  async create(episode: Omit<Episode, "id">): Promise<number> {
+    const { data, error } = await supabase
+      .from("episode") // ou "Episode" si ta table est en CamelCase
+      .insert([{
+        number: episode.number,
+        title: episode.title,
+        synopsis: episode.synopsis,
+        season_id: episode.season_id,
+      }])
+      .select("id")   // pour récupérer l'id
+      .single();
+
+    if (error) throw error;
+    return data!.id as number;
   }
 
-  // Le R du CRUD - Read
-  async read(id: number) {
-    // Exécute la requête SQL pour lire un episode spécifique par son ID
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT * FROM Episode WHERE id = ?",
-      [id],
-    );
-    // Retourne la première ligne du résultat de la requête
-    return rows[0] as Episode;
+  // READ (un episode par id)
+  async read(id: number): Promise<Episode | null> {
+    const { data, error } = await supabase
+      .from("episode")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as Episode | null;
   }
 
-  async readAll() {
-    // Exécute la requête SQL pour lire tous les episodes
-    const [rows] = await databaseClient.query<Rows>("SELECT * FROM Episode");
-    // Retourne le tableau des episodes
-    return rows as Episode[];
+  // READ ALL
+  async readAll(): Promise<Episode[]> {
+    const { data, error } = await supabase
+      .from("episode")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as Episode[];
   }
 
-  // Le U du CRUD - Update
-  async update(episode: Episode) {
-    // Exécute la requête SQL pour mettre à jour un episode existant
-    const [result] = await databaseClient.query<Result>(
-      "UPDATE Episode SET number = ?, title = ?, synopsis = ?, season_id = ? WHERE id = ?",
-      [
-        episode.number,
-        episode.title,
-        episode.synopsis,
-        episode.season_id,
-        episode.id,
-      ],
-    );
-    return result.affectedRows > 0; // Retourne true si la mise à jour a réussi
+  // UPDATE
+  async update(episode: Episode): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("episode")
+      .update({
+        number: episode.number,
+        title: episode.title,
+        synopsis: episode.synopsis,
+        season_id: episode.season_id,
+      })
+      .eq("id", episode.id)
+      .select("id"); // retourne les lignes modifiées
+
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 
-  // Le D du CRUD - Delete
-  async delete(id: number) {
-    // Exécute la requête SQL pour supprimer un episode par son ID
-    const [result] = await databaseClient.query<Result>(
-      "DELETE FROM Episode WHERE id = ?",
-      [id],
-    );
-    return result.affectedRows > 0; // Retourne true si la suppression a réussi
+  // DELETE
+  async delete(id: number): Promise<boolean> {
+    const { data, error } = await supabase
+      .from("episode")
+      .delete()
+      .eq("id", id)
+      .select("id");
+
+    if (error) throw error;
+    return (data?.length ?? 0) > 0;
   }
 }
 

@@ -1,63 +1,68 @@
-import databaseClient from "../../../database/client";
+import supabase from "../../../database/supabase";
 
-import type { Result, Rows } from "../../../database/client";
-
-type Genre = {
+export type Genre = {
   id: number;
   name: string;
 };
 
 class GenreRepository {
-  // Le C du CRUD - Create
-  async create(genre: Omit<Genre, "id">) {
-    // Création d'un nouveau genre
-    const [result] = await databaseClient.query<Result>(
-      "INSERT INTO Genre (name) values (?)",
-      [genre.name],
-    );
-    //Retourne l'ID du nouveau genre inséré
-    return result.insertId;
+  // CREATE
+  async create(genre: Omit<Genre, "id">): Promise<number> {
+    const { data, error } = await supabase
+      .from("genre") // ou "Genre" si ta table est en CamelCase
+      .insert([{ name: genre.name }])
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data!.id as number;
   }
 
-  // Le R du CRUD - Read
-  async read(id: number) {
-    // Execute la requête SQL pour lire un item spécifique par son ID
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT * FROM Genre WHERE id = ?",
-      [id],
-    );
-    //Retourne la première ligne du résultat de la requête
-    return rows[0] as Genre;
-  }
-  async readAll() {
-    // Exécute la requête SQL pour lire tout le tableau de la table "Genre"
-    const [rows] = await databaseClient.query<Rows>("SELECT * FROM Genre");
+  // READ (un genre par id)
+  async read(id: number): Promise<Genre | null> {
+    const { data, error } = await supabase
+      .from("genre")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
 
-    // Return the array of items
-    return rows as Genre[];
+    if (error) throw error;
+    return (data ?? null) as Genre | null;
   }
 
-  // Le U du CRUD - Update
-  async update(genre: Genre) {
-    // Exécute la requête SQL pour lire tout le tableau de la table "Genre"
-    const [result] = await databaseClient.query<Result>(
-      "Update Genre SET name = ? WHERE id = ?",
-      [genre.name, genre.id],
-    );
+  // READ ALL
+  async readAll(): Promise<Genre[]> {
+    const { data, error } = await supabase
+      .from("genre")
+      .select("*")
+      .order("id", { ascending: true });
 
-    // Retourne le tableau d'animés mis à jour
-
-    return result.affectedRows;
+    if (error) throw error;
+    return (data ?? []) as Genre[];
   }
-  // Le D du CRUD - Delete
-  async delete(id: number) {
-    // Exécute la requête SQL pour supprimer un genre spécifique par son ID
-    const [result] = await databaseClient.query<Result>(
-      "DELETE FROM Genre WHERE id = ?",
-      [id],
-    );
-    // Retourne le nombre de lignes affectées par la suppression
-    return result.affectedRows;
+
+  // UPDATE
+  async update(genre: Genre): Promise<number> {
+    const { data, error } = await supabase
+      .from("genre")
+      .update({ name: genre.name })
+      .eq("id", genre.id)
+      .select("id");
+
+    if (error) throw error;
+    return data?.length ?? 0; // nombre de lignes modifiées (0 ou 1)
+  }
+
+  // DELETE
+  async delete(id: number): Promise<number> {
+    const { data, error } = await supabase
+      .from("genre")
+      .delete()
+      .eq("id", id)
+      .select("id");
+
+    if (error) throw error;
+    return data?.length ?? 0; // nombre de lignes supprimées
   }
 }
 

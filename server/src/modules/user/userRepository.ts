@@ -1,236 +1,312 @@
-import databaseClient from "../../../database/client";
-import type { Result, Rows } from "../../../database/client";
+import supabase from "../../../database/supabase";
 
-type User = {
+export type User = {
   id: number;
   firstname: string;
   lastname: string;
   mail: string;
-  password?: string;
   is_admin: boolean;
   is_actif: boolean;
   abonnement_id: number;
-  profil_picture_id: number;
+  profil_picture_id: number | null;
 };
 
-type ProfilPicture = {
+type UserRow = User & { password: string | null };
+
+export type ProfilPicture = {
   id: number;
   profil_picture: string;
 };
 
-class userRepository {
-  // Le C du CRUD - CREATE
-  async create(user: Omit<User, "id">) {
-    try {
-      // Création d'un nouveau user dans la base de données
-      const [result] = await databaseClient.query<Result>(
-        "INSERT INTO Users (firstname, lastname, mail, password, is_admin, is_actif, abonnement_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-          user.firstname,
-          user.lastname,
-          user.mail,
-          user.password,
-          user.is_admin,
-          user.is_actif,
-          user.abonnement_id,
-        ],
-      );
-      // Retourne l'ID du nouveau user inséré
-      return result.insertId;
-    } catch (error) {
-      console.error("Erreur d'insertion dans la base :", error);
-      throw error; // si la requête échoue, on relance l'erreur
-    }
+/** ---- Helper commun : convertir une URL signée ou un path en URL publique ---- */
+function toPublic(
+  signedOrPath: string | null | undefined,
+  bucket: "poster" | "profilpicture" | "video" = "poster"
+): string {
+  if (!signedOrPath) return "";
+  // si on reçoit une URL signée, on extrait le chemin après le nom du bucket
+  const m = signedOrPath.match(new RegExp(`${bucket}/([^?]+)`));
+  const path = m ? m[1] : signedOrPath; // si déjà un path, on garde tel quel
+  return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+
+class UserRepository {
+  // CREATE
+  async create(user: Omit<User, "id"> & { password?: string | null }): Promise<number> {
+    const { data, error } = await supabase
+      .from("users")
+      .insert([{
+        firstname: user.firstname,
+        lastname: user.lastname,
+        mail: user.mail.toLowerCase().trim(),
+        password: user.password ?? null,
+        is_admin: user.is_admin ?? false,
+        is_actif: user.is_actif ?? true,
+        abonnement_id: user.abonnement_id,
+        profil_picture_id: user.profil_picture_id ?? null,
+      }])
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data!.id as number;
   }
 
-  // Le R du CRUD
-  async read(id: number) {
-    //Exécute la requête SQL pour lire une information par son id
-    const [rows] = await databaseClient.query<Rows>(
-      "select * from Users where id = ?",
-      [id],
-    );
-    //Retourne la première ligne du résultat de la requête
-    return rows[0] as User;
-  }
-  async readAll() {
-    // Exécute la requête SQL pour lire tout le tableau de la table "Users"
-    const [rows] = await databaseClient.query<Rows>("select * from Users");
-    // Retournes le tableau d'éléments
-    return rows as User[];
+  // READ by id (sans password)
+  async read(id: number): Promise<User | null> {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, firstname, lastname, mail, is_admin, is_actif, abonnement_id, profil_picture_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as User | null;
   }
 
-  //   Le U du CRUD - Update
-  async update(user: User) {
-    // Exécute la requête SQL pour lire tout le tableau de la table "User"
-    const [result] = await databaseClient.query<Result>(
-      "UPDATE Users set firstname = ?, lastname = ?, mail = ?, is_admin = ?, is_actif = ?, abonnement_id = ? WHERE id = ?",
-      [
-        user.firstname,
-        user.lastname,
-        user.mail,
-        user.is_admin,
-        user.is_actif,
-        user.abonnement_id,
-        user.id,
-      ],
-    );
-    // Retourne le tableau des users mis à jour
-    return result.affectedRows;
-  }
-  // Le D du CRUD
-  async delete(id: number) {
-    // Exécute la requête SQL pour supprimer un user spécifique par son ID
-    const [result] = await databaseClient.query<Result>(
-      "DELETE FROM Users WHERE id= ?",
-      [id],
-    );
-    // Retourne le nombre de lignes affectées par la suppression
+  // READ ALL (sans password)
+  async readAll(): Promise<User[]> {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, firstname, lastname, mail, is_admin, is_actif, abonnement_id, profil_picture_id")
+      .order("id", { ascending: true });
 
-    return result.affectedRows;
+    if (error) throw error;
+    return (data ?? []) as User[];
   }
 
-  // Lire TOUS les users avec le type d'abonnement en plus
+  // UPDATE (sans password)
+  async update(user: User): Promise<number> {
+    const { data, error } = await supabase
+      .from("users")
+      .update({
+        firstname: user.firstname,
+        lastname:  user.lastname,
+        mail:      user.mail.toLowerCase().trim(),
+        is_admin:  user.is_admin,
+        is_actif:  user.is_actif,
+        abonnement_id: user.abonnement_id,
+        profil_picture_id: user.profil_picture_id ?? null,
+      })
+      .eq("id", user.id)
+      .select("id");
 
-  async readAllWithAbonnement() {
-    const [rows] = await databaseClient.query(
-      `SELECT u.id, u.firstname, u.lastname, u.mail, u.is_admin, u.is_actif,
-            a.name AS abonnement_name
-      FROM Users u
-      LEFT JOIN Abonnement a ON u.abonnement_id = a.id`,
-    );
-    return rows;
+    if (error) throw error;
+    return data?.length ?? 0;
   }
-  // Lire le prénom et le nom de chaque User et afficher toutes les infos des animés qu'il a visualisé
-  async readAllWithUsers() {
-    const [rows] = await databaseClient.query(`
-    SELECT 
-      u.id AS user_id,
-      u.firstname,
-      u.lastname,
-      a.id AS anime_id,
-      a.title,
-      a.portrait
-    FROM users AS u
-    INNER JOIN users_anime AS ua ON u.id = ua.users_id
-    INNER JOIN anime AS a ON a.id = ua.anime_id
-  `);
-    return rows;
+
+  // DELETE
+  async delete(id: number): Promise<number> {
+    const { data, error } = await supabase
+      .from("users")
+      .delete()
+      .eq("id", id)
+      .select("id");
+
+    if (error) throw error;
+    return data?.length ?? 0;
   }
-  //Cette fonction ajoute un animé visionné dans l'historique et dans la table Users_Anime
-  async addToHistory(userId: number, animeId: number) {
-    try {
-      // On vérifie si l'utilisateur à déjà visionné l'animé
-      const [existing] = await databaseClient.query<Rows>(
-        "SELECT * FROM Users_Anime WHERE users_id = ? AND anime_id = ?",
-        [userId, animeId],
-      );
-      //Si on trouve déjà l'animé alors on ne l'ajoute pas à l'historique
-      if ((existing as Rows).length > 0) {
-        return { message: "Déjà présent" };
+
+  // READ ALL with abonnement name
+  async readAllWithAbonnement(): Promise<Array<User & { abonnement_name: string | null }>> {
+    const { data, error } = await supabase
+      .from("users")
+      .select(`
+        id, firstname, lastname, mail, is_admin, is_actif, abonnement_id, profil_picture_id,
+        abonnement:abonnement_id ( name )
+      `);
+
+    if (error) throw error;
+
+    return (data ?? []).map((u: any) => ({
+      id: u.id,
+      firstname: u.firstname,
+      lastname: u.lastname,
+      mail: u.mail,
+      is_admin: u.is_admin,
+      is_actif: u.is_actif,
+      abonnement_id: u.abonnement_id,
+      profil_picture_id: u.profil_picture_id ?? null,
+      abonnement_name: u.abonnement?.name ?? null,
+    }));
+  }
+
+  // READ users + animes they watched (historique croisé)
+  async readAllWithUsers(): Promise<Array<{
+    user_id: number; firstname: string; lastname: string;
+    anime_id: number; title: string; portrait: string;
+  }>> {
+    const { data, error } = await supabase
+      .from("users_anime")
+      .select(`
+        users:users_id ( id, firstname, lastname ),
+        anime:anime_id ( id, title, portrait )
+      `);
+
+    if (error) throw error;
+
+    return (data ?? []).map((row: any) => ({
+      user_id: row.users?.id,
+      firstname: row.users?.firstname,
+      lastname: row.users?.lastname,
+      anime_id: row.anime?.id,
+      title: row.anime?.title,
+      portrait: toPublic(row.anime?.portrait, "poster"),
+    }));
+  }
+
+  // addToHistory: ajoute (users_id, anime_id) si absent
+  async addToHistory(userId: number, animeId: number): Promise<{ added: boolean; message?: string }> {
+    const { data, error } = await supabase
+      .from("users_anime")
+      .insert([{ users_id: userId, anime_id: animeId }])
+      .select("users_id");
+
+    if (error) {
+      if ((error as any).code === "23505") {
+        return { added: false, message: "Déjà présent" };
       }
-
-      // Sinon on ajoute l'animé à l'historique
-      const [result] = await databaseClient.query(
-        "INSERT INTO Users_Anime (users_id, anime_id) VALUES (?, ?)",
-        [userId, animeId],
-      );
-
-      return result; // on renvoie le résultat de l'instertion
-    } catch (error) {
-      console.error("Erreur lors de l'ajout à l'historique :", error);
       throw error;
     }
-  }
-  // Lire les animés vus par un utilisateur spécifique
-  async readUserHistory(userId: number) {
-    const [rows] = await databaseClient.query(
-      `
-    SELECT 
-     a.*
-    FROM users_anime AS ua
-    INNER JOIN anime AS a ON a.id = ua.anime_id
-    WHERE ua.users_id = ?
-  `,
-      [userId],
-    );
-    return rows;
+
+    return { added: (data?.length ?? 0) > 0 };
   }
 
-  async signIn(mail: string, password: string) {
-    // Exécute la requête SQL pour lire un utilisateur par son mail et mot de passe
-    const [rows] = await databaseClient.query<Rows>(
-      "select * FROM Users where mail = ?",
-      [mail],
-    );
-    //Retourne la première ligne du résultat de la requête ou undefined si aucun utilisateur n'est trouvé
-    return rows[0] as User | undefined;
+  // READ history of one user (avec images publiques)
+  async readUserHistory(userId: number): Promise<Array<{
+    id: number; title: string; synopsis: string;
+    portrait: string; date: number; paysage: string; video: string;
+  }>> {
+    // ids vus
+    const { data: seen, error: e1 } = await supabase
+      .from("users_anime")
+      .select("anime_id")
+      .eq("users_id", userId);
+    if (e1) throw e1;
+
+    const ids = (seen ?? []).map((r: any) => r.anime_id);
+    if (ids.length === 0) return [];
+
+    // animes
+    const { data: animes, error: e2 } = await supabase
+      .from("anime")
+      .select("id, title, synopsis, portrait, date, paysage, video")
+      .in("id", ids);
+    if (e2) throw e2;
+
+    // conversion en public URL
+    return (animes ?? []).map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      synopsis: a.synopsis,
+      date: a.date,
+      video: a.video,
+      portrait: toPublic(a.portrait, "poster"),
+      paysage: toPublic(a.paysage, "poster"),
+    }));
   }
 
+  // signIn helper (avec password hash)
+  async signIn(mail: string): Promise<UserRow | null> {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, firstname, lastname, mail, password, is_admin, is_actif, abonnement_id, profil_picture_id")
+      .eq("mail", mail.toLowerCase().trim())
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as UserRow | null;
+  }
+
+  // signUp: création directe
   async signUp(
     firstname: string,
     lastname: string,
     mail: string,
     passHash: string,
     abonnement_id: number,
-    is_admin: boolean, // Par défaut, les nouveaux utilisateurs ne sont pas administrateurs
-    is_actif: boolean, // Par défaut, les nouveaux utilisateurs sont actifs
-  ) {
-    // Exécute la requête SQL pour créer un nouvel utilisateur
-    const [result] = await databaseClient.query<Result>(
-      "INSERT INTO Users (firstname, lastname, mail, password, abonnement_id, is_admin, is_actif) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [firstname, lastname, mail, passHash, abonnement_id, is_admin, is_actif],
-    );
-    // Retourne l'ID du nouvel utilisateur inséré
-    return result.insertId;
+    is_admin: boolean,
+    is_actif: boolean,
+  ): Promise<number> {
+    const { data, error } = await supabase
+      .from("users")
+      .insert([{
+        firstname,
+        lastname,
+        mail: mail.toLowerCase().trim(),
+        password: passHash,
+        abonnement_id,
+        is_admin,
+        is_actif,
+      }])
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data!.id as number;
   }
 
-  // Récupère un utilisateur depuis la base de données par son ID pour le test unitaire de suppression d'un user
-  async findById(id: number) {
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT * FROM Users WHERE id = ?",
-      [id],
-    );
-    return (rows[0] as User) || null;
+  // findById
+  async findById(id: number): Promise<User | null> {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, firstname, lastname, mail, is_admin, is_actif, abonnement_id, profil_picture_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as User | null;
   }
 
-  //   Pour le changement de l'image de profil
-  async updateProfilPicture(id: number, profil_picture_id: number) {
-    // Exécute la requête SQL pour lire tout le tableau de la table "User"
-    const [result] = await databaseClient.query<Result>(
-      "UPDATE Users SET profil_picture_id = ? WHERE id = ?",
-      [profil_picture_id, id],
-    );
-    // Retourne le tableau des users mis à jour
-    return result.affectedRows;
+  // updateProfilPicture
+  async updateProfilPicture(id: number, profil_picture_id: number | null): Promise<number> {
+    const { data, error } = await supabase
+      .from("users")
+      .update({ profil_picture_id })
+      .eq("id", id)
+      .select("id");
+
+    if (error) throw error;
+    return data?.length ?? 0;
   }
 
-  async readAllPicture() {
-    // Exécute la requête SQL pour lire tout le tableau de la table "ProfilPicture"
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT * FROM ProfilPicture",
-    );
-    // Retournes le tableau d'éléments
-    return rows as ProfilPicture[];
+  // readAllPicture
+  async readAllPicture(): Promise<ProfilPicture[]> {
+    const { data, error } = await supabase
+      .from("profilpicture")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as ProfilPicture[];
   }
 
-  // Pour récupérer le bon id picture selon l'id du user
-  async readUrlPicture(userId: number) {
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT profil_picture FROM ProfilPicture AS pp INNER JOIN Users AS u ON pp.id=u.profil_picture_id WHERE u.id = ?",
-      [userId],
-    );
-    return rows[0];
+  // readUrlPicture (retourne une URL publique)
+  async readUrlPicture(userId: number): Promise<{ profil_picture: string } | null> {
+    const { data, error } = await supabase
+      .from("users")
+      .select(`profil_picture_id, picture:profil_picture_id ( profil_picture )`)
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+
+    const raw = (data as any)?.picture?.profil_picture ?? null;
+    if (!raw) return null;
+
+    return { profil_picture: toPublic(raw, "profilpicture") };
   }
 
-  // Vérification de l'existence de l'e-mail en BDD pour le middleware checkEmailExists
-  async findByEmail(mail: string) {
-    const [rows] = await databaseClient.query<Rows>(
-      "SELECT id FROM Users WHERE mail = ?",
-      [mail],
-    );
-    return rows[0];
+  // findByEmail
+  async findByEmail(mail: string): Promise<{ id: number } | null> {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id")
+      .eq("mail", mail.toLowerCase().trim())
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data ?? null) as { id: number } | null;
   }
 }
 
-export default new userRepository();
+export default new UserRepository();

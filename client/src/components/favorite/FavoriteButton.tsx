@@ -8,12 +8,12 @@ function FavoriteButton({ animeId }: { animeId: number }) {
   const { isFavorite, toggleFavorite } = useFavoriteContext();
 
   const handleClick = async () => {
-    if (!connected || !animeId) {
-      toast.error("Veuillez vous connecter");
-    }
-    await toggleFavorite(animeId);
+  if (!connected || !animeId) {
+    toast.error("Veuillez vous connecter");
     return;
-  };
+  }
+  await toggleFavorite(animeId);
+};
 
   return (
     <button

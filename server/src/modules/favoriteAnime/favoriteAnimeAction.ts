@@ -1,77 +1,76 @@
+// server/src/modules/favoriteAnime/favoriteAnimeAction.ts
 import type { RequestHandler } from "express";
+import repo from "./favoriteAnimeRepository";
+import supabase from "../../../database/supabase";
 
-//Accès à la BDD
-import favoriteAnimeRepository from "./favoriteAnimeRepository";
-
-interface FavoriteAnime {
-  id?: number; // L'id est optionnel pour les créations
-  users_id: number;
-  anime_id: number;
-}
-
-const browse: RequestHandler = async (req, res, next) => {
+// GET /api/favorite_anime/:users_id
+export const browse: RequestHandler = async (req, res, next) => {
   try {
-    //Fetch des favoris
     const users_id = Number(req.params.users_id);
-    const favori = await favoriteAnimeRepository.readAll(users_id);
-    //réponse au format JSON
-    res.json(favori);
+    if (!Number.isInteger(users_id)) {
+      res.status(400).json({ error: "users_id invalide" });
+      return;
+    }
+    const rows = await repo.readAll(users_id);
+    res.json(rows);
   } catch (err) {
-    //Transmission des erreurs au middleware pour gestion des erreurs
+    console.error("favorite.browse error:", err); // ⬅️ utile si ça replante
     next(err);
   }
 };
 
-// Le R du BREAD - Logique pour lire un favori spécifique
-const read: RequestHandler = async (req, res, next) => {
+// GET /api/favorite_anime/:users_id/:anime_id
+export const read: RequestHandler = async (req, res, next) => {
   try {
     const users_id = Number(req.params.users_id);
     const anime_id = Number(req.params.anime_id);
-    const favori = await favoriteAnimeRepository.read(users_id, anime_id);
-    if (!favori) res.sendStatus(404);
-    else res.json(favori);
-  } catch (error) {
-    next(error);
-  }
+    if (!Number.isInteger(users_id) || !Number.isInteger(anime_id)) { res.status(400).json({ error: "params invalides" }); return; }
+    const fav = await repo.read(users_id, anime_id);
+    if (!fav) { res.sendStatus(404); return; }
+    res.json(fav); return;
+  } catch (err) { next(err); }
 };
 
-// Le A de BREAD - Créer une opération
-const add: RequestHandler = async (req, res, next) => {
+// POST /api/favorite_anime   body: { users_id, anime_id }
+export const add: RequestHandler = async (req, res) => {
   try {
-    // On extrait les donnés de l'élément du corps de la requête
-    const newFavori: FavoriteAnime = {
-      users_id: req.body.users_id,
-      anime_id: req.body.anime_id,
-    };
-    // Création d'un favori
-    const insertFavorite = await favoriteAnimeRepository.create(newFavori);
+    console.log("ADD /favorite_anime body =", req.body);
+    const users_id = Number(req.body?.users_id);
+    const anime_id = Number(req.body?.anime_id);
 
-    // On répond avec http 201 (crée) et l'id de l'élément nouvellement inséré
-    res.status(201).json({ insertFavorite });
-  } catch (err) {
-    // On transmet toutes les erreurs au middleware de gestion des erreurs
-    next(err);
+    if (!Number.isInteger(users_id) || !Number.isInteger(anime_id)) {
+      res.status(400).json({ error: "users_id et anime_id requis (entiers)" }); return;
+    }
+
+    // 🔎 existence explicite
+    const { data: u } = await supabase.from("users").select("id").eq("id", users_id).maybeSingle();
+    if (!u) { res.status(400).json({ error: `users_id ${users_id} inexistant` }); return; }
+
+    const { data: a } = await supabase.from("anime").select("id").eq("id", anime_id).maybeSingle();
+    if (!a) { res.status(400).json({ error: `anime_id ${anime_id} inexistant` }); return; }
+
+    const ok = await repo.create({ users_id, anime_id });
+    res.status(201).json({ ok: true });
+  } catch (err: any) {
+    console.error("favorite.add error:", err?.code, err?.message || err);
+    res.status(err?.status ?? 500).json({ error: err?.message ?? "Internal Server Error" });
   }
 };
 
-// Le D du BREAD - Logique pour supprimer un favori spécifique
-const destroy: RequestHandler = async (req, res, next) => {
+// DELETE /api/favorite_anime/:users_id/:anime_id
+export const destroy: RequestHandler = async (req, res, next) => {
   try {
     const users_id = Number(req.params.users_id);
     const anime_id = Number(req.params.anime_id);
-    const id = Number(req.params.id);
+    if (!Number.isInteger(users_id) || !Number.isInteger(anime_id)) {
+      res.status(400).json({ error: "params invalides" }); return;
+    }
 
-    const affectedRows = await favoriteAnimeRepository.delete(
-      users_id,
-      anime_id,
-      id,
-    );
+    const ok = await repo.delete(users_id, anime_id);
+    if (!ok) { res.sendStatus(404); return; }
 
-    if (!affectedRows) res.sendStatus(404);
-    else res.sendStatus(204);
-  } catch (error) {
-    next(error);
-  }
+    res.sendStatus(204); return;
+  } catch (err) { next(err); }
 };
 
 export default { browse, read, add, destroy };
