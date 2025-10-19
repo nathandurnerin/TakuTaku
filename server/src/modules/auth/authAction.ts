@@ -15,7 +15,7 @@ const signIn = async (request: Request, response: Response): Promise<any> => {
   // Récupération des données envoyées depuis le client via le formulaire et insertion dans le corps de la requête
   const { mail, password } = request.body;
   // Appel du repository pour vérifier si un utilisateur existe dans la base de donnees
-  const user = await userRepository.signIn(mail, password);
+  const user = await userRepository.signIn(mail);
 
   if (!user) {
     return response.status(401).send({ message: "Erreur d'authentification" });
