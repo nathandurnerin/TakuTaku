@@ -65,7 +65,7 @@ class FavoriteAnimeRepository {
     return (animes ?? []).map((a: any) => ({
       anime_id: a.id,
       title: a.title,
-      portrait: toPublicUrl(a.portrait, "poster"),
+      portrait: toPublicUrl(a.portrait, "poster") ?? "",
     }));
   }
 
