@@ -38,10 +38,11 @@ class NoteRepository {
       return { average: null };
     }
 
-    const sum = data.reduce((acc, n: any) => acc + Number(n.note), 0);
-    const avg = sum / data.length;
+    const notes = (data ?? []).map((r: { note: number }) => Number(r.note));
+const sum   = notes.reduce((acc: number, x) => acc + x, 0);
+const avg   = sum / notes.length;
+return { average: Math.round(avg * 10) / 10 };
 
-    return { average: Math.round(avg * 10) / 10 };
   }
 
   // READ ALL (toutes les notes)
