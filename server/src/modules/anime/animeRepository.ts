@@ -195,6 +195,49 @@ class AnimeRepository {
       };
     });
   }
+
+  // À l’intérieur de class AnimeRepository { ... }
+
+async readAllWithNote(): Promise<Array<{ id: number; title: string; note: number | null }>> {
+  // 1) si tu as une RPC (postgres function) "anime_with_avg_note"
+  const rpc = await supabase.rpc("anime_with_avg_note");
+  if (!rpc.error && rpc.data) {
+    // Assure-toi que ta RPC renvoie { id, title, note }
+    return rpc.data as Array<{ id: number; title: string; note: number | null }>;
+  }
+
+  // 2) fallback sans RPC
+  const [{ data: animes, error: e1 }, { data: notes, error: e2 }] = await Promise.all([
+    supabase.from("anime").select("id, title"),
+    supabase.from("note").select("anime_id, note"),
+  ]);
+
+  if (e1) throw e1;
+  if (e2) throw e2;
+
+  const byAnime: Record<number, number[]> = {};
+  (notes ?? []).forEach((n: any) => {
+    if (!byAnime[n.anime_id]) byAnime[n.anime_id] = [];
+    byAnime[n.anime_id].push(Number(n.note));
+  });
+
+  const avg = (arr: number[]) =>
+    arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null;
+
+  return (animes ?? [])
+    .map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      note: avg(byAnime[a.id] ?? []),
+    }))
+    .sort((x, y) => {
+      if (x.note == null && y.note == null) return 0;
+      if (x.note == null) return 1;
+      if (y.note == null) return -1;
+      return (y.note as number) - (x.note as number);
+    });
+}
+
 }
 
 export default new AnimeRepository();
