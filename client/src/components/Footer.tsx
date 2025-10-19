@@ -1,6 +1,6 @@
-import emailjs from "emailjs-com";
+import emailjs from "@emailjs/browser";   // ⬅️ nouveau package
 import { useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";   // ⬅️ corrige l'import
 import { toast } from "react-toastify";
 
 function Footer({ setChaosMode }: { setChaosMode: (value: boolean) => void }) {
@@ -8,33 +8,27 @@ function Footer({ setChaosMode }: { setChaosMode: (value: boolean) => void }) {
   const form = useRef<HTMLFormElement>(null);
   const [showChaosGif, setShowChaosGif] = useState(false);
   const [loading, setLoading] = useState(false);
-  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-  const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID!;
+  const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID!;
+  const publicKey  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY!;
 
   const sendEmail = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (!form.current) return;
 
     setLoading(true);
 
     emailjs
       .sendForm(serviceId, templateId, form.current, publicKey)
-      .then(
-        () => {
-          toast.success("Votre message a bien été envoyé 🎉");
-          form.current?.reset();
-        },
-        () => {
-          toast.error(
-            "Une erreur est survenue, veuillez réessayer plus tard ❌",
-          );
-        },
-      )
-      .finally(() => {
-        setLoading(false);
-      });
+      .then(() => {
+        toast.success("Votre message a bien été envoyé 🎉");
+        form.current?.reset();
+      })
+      .catch(() => {
+        toast.error("Une erreur est survenue, veuillez réessayer plus tard ❌");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
