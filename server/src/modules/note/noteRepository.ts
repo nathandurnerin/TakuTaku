@@ -27,23 +27,23 @@ class NoteRepository {
 
   // READ moyenne des notes d’un anime
   async read(anime_id: number): Promise<{ average: number | null }> {
-    const { data, error } = await supabase
-      .from("note")
-      .select("note")
-      .eq("anime_id", anime_id);
+  const { data, error } = await supabase
+    .from("note")
+    .select("note")
+    .eq("anime_id", anime_id);
 
-    if (error) throw error;
+  if (error) throw error;
+  if (!data || data.length === 0) return { average: null };
 
-    if (!data || data.length === 0) {
-      return { average: null };
-    }
+  // typage explicite
+  const notes: number[] = (data as Array<{ note: number | string }>)
+    .map((r) => Number(r.note));
 
-    const notes = (data ?? []).map((r: { note: number }) => Number(r.note));
-const sum   = notes.reduce((acc: number, x) => acc + x, 0);
-const avg   = sum / notes.length;
-return { average: Math.round(avg * 10) / 10 };
+  const sum = notes.reduce((acc: number, x: number) => acc + x, 0);
+  const avg = sum / notes.length;
 
-  }
+  return { average: Math.round(avg * 10) / 10 };
+}
 
   // READ ALL (toutes les notes)
   async readAll(): Promise<Note[]> {
